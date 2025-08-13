@@ -1,9 +1,11 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Apis;
 
+use App\Http\Controllers\Controller;
 use App\Models\Property;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PropertyController extends Controller
 {
@@ -61,11 +63,6 @@ class PropertyController extends Controller
         ]);
     }
 
-    public function create()
-    {
-        return view('upload-form');
-    }
-
 
     public function store(Request $request)
     {
@@ -91,11 +88,10 @@ class PropertyController extends Controller
         ]);
 
         $imagePaths = [];
-
         if ($request->hasFile('images')) {
             foreach ($request->file('images') as $index => $image) {
                 $path = $image->store('properties', 'public');
-                $url = asset('storage/' . $path);
+                $url = 'storage/' . $path;
 
                 $property->images()->create([
                     'image_path' => $url,
@@ -120,26 +116,98 @@ class PropertyController extends Controller
         ], 201);
     }
 
-    public function show(Property $property)
+    public function show(string $id)
     {
-        //
+        $property = Property::with(['images'])->find($id);
+
+        if (!$property) {
+            return response()->json(['message' => 'Property not found'], 404);
+        }
+
+        return response()->json([
+            'id' => $property->id,
+            'title' => $property->title,
+            'description' => $property->description,
+            'price' => (float) $property->price,
+            'city' => $property->city,
+            'district' => $property->district,
+            'features' => $property->features,
+            'status' => $property->status,
+            'images' => $property->images()->get()->map(function ($image) {
+                return [
+                    'id' => $image->id,
+                    'image_path' => $image->image_path,
+                    'is_primary' => $image->is_primary,
+                ];
+            }),
+        ]);
     }
 
-
-    public function edit(Property $property)
+    public function update(Request $request, string $id)
     {
-        //
+        $property = Property::find($id);
+
+        $validated = $request->validate([
+            'title'     => 'sometimes|string|max:255',
+            'price'     => 'sometimes|numeric|min:0',
+            'area'      => 'sometimes|numeric|min:0',
+            'city'      => 'sometimes|string|max:100',
+            'district'  => 'sometimes|string|max:100',
+            'status'    => 'sometimes|in:available,sold,rented,pending',
+            'images.*'  => 'sometimes|image|mimes:jpeg,png,jpg,gif'
+        ]);
+
+        Log::info($request->all());
+
+        $property->fill($validated);
+        $property->save();
+
+        if ($request->hasFile('images')) {
+            $currentImages = $property->images ?? [];
+
+            $newImagePaths = [];
+
+            foreach ($request->file('images') as $index => $image) {
+                $path = $image->store('properties', 'public');
+                $url = 'storage/' . $path;
+
+                $property->images()->create([
+                    'image_path' => $url,
+                    'image_name' => $image->getClientOriginalName(),
+                    'is_primary' => false,
+                    'sort_order' => count($currentImages) + $index,
+                ]);
+
+                $newImagePaths[] = $url;
+            }
+
+            $property->images = array_merge($currentImages, $newImagePaths);
+            $property->save();
+        }
+
+        return response()->json(['message' => 'Property updated successfully']);
     }
 
-
-    public function update(Request $request, Property $property)
+    public function destroy(string $id)
     {
-        //
+        $property = Property::find($id);
+        $property->delete();
+
+        return response()->json([
+            'message' => 'Property deleted successfully'
+        ]);
     }
 
-
-    public function destroy(Property $property)
+    public function restore(string $id)
     {
-        //
+        $property = Property::withTrashed()->find($id);
+
+        if (!$property) {
+            return response()->json(['message' => 'Property not found'], 404);
+        }
+
+        $property->restore();
+
+        return response()->json(['message' => 'Property restored successfully']);
     }
 }
