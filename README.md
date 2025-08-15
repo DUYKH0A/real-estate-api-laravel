@@ -44,7 +44,7 @@ php artisan key:generate
 php artisan migrate --seed
 ```
 
-### Tạo symbolic link cho storage (nếu project có upload file)
+### Tạo symbolic link cho storage
 ```bash
 php artisan storage:link
 ```
